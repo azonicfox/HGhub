@@ -1,0 +1,55 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        run: npm install --global pnpm@10
+
+      - name: Set up Rust for iOS
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-apple-ios
+          rustup default stable
+
+      - name: Install iOS build tools
+        run: |
+          brew list --versions xcodegen >/dev/null 2>&1 || brew install xcodegen
+          brew list --versions cocoapods >/dev/null 2>&1 || brew install cocoapods
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Initialize iOS project
+        run: pnpm dlx @tauri-apps/cli@2.12.5 ios init --ci
+
+      - name: Build unsigned IPA
+        run: pnpm dlx @tauri-apps/cli@2.12.5 ios build --no-sign --export-method debugging
+
+      - name: Verify IPA
+        run: |
+          find src-tauri/gen/apple/build -type f -name '*.ipa' -print
+          test -n "$(find src-tauri/gen/apple/build -type f -name '*.ipa' -print -quit)"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: HGhub-iOS-unsigned-IPA
+          path: src-tauri/gen/apple/build/**/*.ipa
+          if-no-files-found: error
+          retention-days: 7
